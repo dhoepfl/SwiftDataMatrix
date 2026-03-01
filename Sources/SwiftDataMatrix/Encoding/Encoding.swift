@@ -17,61 +17,69 @@ import Foundation
 func encode(data: Data,
             codeType: SwiftDataMatrixCodeType = .default,
             codeForm: SwiftDataMatrixCodeForm = .square) throws -> EncoderResult {
-    // Encode
-    let state = EncodingState(data: data, codeForm: codeForm)
-    
+
+    let state: EncodingState
+
     // Preprocessing
     if codeType == .gs1 {
-        state.encoded.append(232)
+        state = EncodingState(data: data, codeForm: codeForm)
+        state.append(encoded: 232)
 
-        if state.data.starts(with: [232]) {
-            state.data = state.data.dropFirst()
+        if state.hasMoreData && state.peek() == 232 {
+            _ = state.pop()
         }
     } else if codeType == .readerProgramming {
-        state.encoded.append(234)
+        state = EncodingState(data: data, codeForm: codeForm)
+        state.append(encoded: 234)
     } else if codeType == .format05 {
-        state.encoded.append(236)
-        
-        if let tailRange = state.data.range(of: "\u{001E}\u{0004}".data(using: .utf8)!, options: [.anchored, .backwards]),
-           let range = state.data.range(of: "[)>\u{001E}05\u{001D}".data(using: .utf8)!, options: [.anchored]) {
-            state.data.removeSubrange(tailRange)
-            state.data.removeSubrange(range)
-        }
-    } else if codeType == .format06 {
-        state.encoded.append(237)
-        
-        if let tailRange = state.data.range(of: "\u{001E}\u{0004}".data(using: .utf8)!, options: [.anchored, .backwards]),
-           let range = state.data.range(of: "[)>\u{001E}06\u{001D}".data(using: .utf8)!, options: [.anchored]) {
-            state.data.removeSubrange(tailRange)
-            state.data.removeSubrange(range)
-        }
-    }
-    
-    // Encode data
-    while state.data.count > 0 {
-        let nextEncoder = suggestedEncoder(data: state.data, currentEncoder: state.encoder)
-        if nextEncoder != state.encoder {
-            // print("Switching from encoder \(state.encoder) to \(nextEncoder)")
+        var preprocessedData = data
 
+        if let tailRange = preprocessedData.range(of: "\u{001E}\u{0004}".data(using: .utf8)!, options: [.anchored, .backwards]),
+           let range = preprocessedData.range(of: "[)>\u{001E}05\u{001D}".data(using: .utf8)!, options: [.anchored]) {
+            preprocessedData.removeSubrange(tailRange)
+            preprocessedData.removeSubrange(range)
+        }
+
+        state = EncodingState(data: preprocessedData, codeForm: codeForm)
+        state.append(encoded: 236)
+    } else if codeType == .format06 {
+        var preprocessedData = data
+
+        if let tailRange = preprocessedData.range(of: "\u{001E}\u{0004}".data(using: .utf8)!, options: [.anchored, .backwards]),
+           let range = preprocessedData.range(of: "[)>\u{001E}06\u{001D}".data(using: .utf8)!, options: [.anchored]) {
+            preprocessedData.removeSubrange(tailRange)
+            preprocessedData.removeSubrange(range)
+        }
+
+        state = EncodingState(data: preprocessedData, codeForm: codeForm)
+        state.append(encoded: 237)
+    } else {
+        state = EncodingState(data: data, codeForm: codeForm)
+    }
+
+    // Encode data
+    while state.hasMoreData {
+        let nextEncoder = suggestedEncoder(state: state)
+        if nextEncoder != state.encoder {
             switch nextEncoder {
             case .base256:
-                state.encoded.append(231)
+                state.append(encoded: 231)
                 break
             case .c40:
-                state.encoded.append(230)
+                state.append(encoded: 230)
                 break
             case .x12:
-                state.encoded.append(238)
+                state.append(encoded: 238)
                 break
             case .text:
-                state.encoded.append(239)
+                state.append(encoded: 239)
                 break
             case .edifact:
-                state.encoded.append(240)
+                state.append(encoded: 240)
                 break
             case .ascii:
                 if state.encoder.requiresSwitchToAscii {
-                    state.encoded.append(254)
+                    state.append(encoded: 254)
                 }
                 break
             }
@@ -87,13 +95,13 @@ func encode(data: Data,
     // Append switch to ASCII, if required/space permits
     if state.encoded.count < dataMatrixSymbolInfo.maxDataCodewords &&
         state.encoder.requiresSwitchToAscii {
-        state.encoded.append(254)
+        state.append(encoded: 254)
     }
     
     // Add padding (if required)
     var pad: UInt8 = 129
     while state.encoded.count < dataMatrixSymbolInfo.maxDataCodewords {
-        state.encoded.append(pad)
+        state.append(encoded: pad)
         let pseudoRandom = ((149 * state.encoded.count + 149) % 253) + 130
         pad = UInt8(pseudoRandom <= 254 ? pseudoRandom : (pseudoRandom - 254))
     }

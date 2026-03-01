@@ -14,16 +14,13 @@ class EDIFACTEncoder {
     /// - Parameter state: The state information to use for encoding.
     /// - Throws An `SwiftDataMatrixError` if the data cannot be encoded (too much data).
     class func encode(_ state: EncodingState) throws {
-        guard !state.data.isEmpty else { return }
+        guard state.hasMoreData else { return }
 
         var buffer = [UInt8]()
-        var data = state.data
 
         repeat {
-            let ch = data.first!
-            buffer.append(ch)
-            data = data.advanced(by: 1)
-            
+            buffer.append(state.pop())
+
             // If we encoded data to have 3*n output bytes, stop for now and let the outside decide how to continue
             if buffer.count % 4 == 0 {
                 // write out
@@ -38,21 +35,20 @@ class EDIFACTEncoder {
                 let cw2 = UInt8((v / 0x000100) % 256)
                 let cw3 = UInt8(v % 256)
 
-                state.encoded.append(cw1)
-                state.encoded.append(cw2)
-                state.encoded.append(cw3)
-                
+                state.append(encoded: cw1)
+                state.append(encoded: cw2)
+                state.append(encoded: cw3)
+
                 buffer.removeAll()
-                state.data = state.data.advanced(by: 4)
-                
-                let nextEncoder = suggestedEncoder(data: data, currentEncoder: .edifact)
+
+                let nextEncoder = suggestedEncoder(state: state)
                 if nextEncoder != .edifact {
                     break
                 }
             }
-        } while !data.isEmpty
+        } while state.hasMoreData
 
-        if !data.isEmpty || buffer.count == 3 {
+        if state.hasMoreData || buffer.count == 3 {
             buffer.append(0)
         } else {
             let minRequiredBytes = state.encoded.count + buffer.count
@@ -77,19 +73,13 @@ class EDIFACTEncoder {
         let cw3 = UInt8(v % 256)
 
         if buffer.count > 0 {
-            state.encoded.append(cw1)
+            state.append(encoded: cw1)
         }
         if buffer.count > 1 {
-            state.encoded.append(cw2)
+            state.append(encoded: cw2)
         }
         if buffer.count > 2 {
-            state.encoded.append(cw3)
-        }
-
-        if buffer.count > 1 {
-            state.data = state.data.advanced(by: buffer.count - 1)
-        } else if buffer.count == 1 && !state.data.isEmpty {
-            state.data = state.data.advanced(by: buffer.count)
+            state.append(encoded: cw3)
         }
     }
     

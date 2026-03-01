@@ -24,26 +24,22 @@ class TextModeEncoder {
     /// - Parameter encoder: Method used to map values to encoded data.
     /// - Throws An `SwiftDataMatrixError` if the data cannot be encoded (too much data).
     class func encode(_ state: EncodingState, encoder: (UInt8) -> EncodedChar) throws {
-        guard !state.data.isEmpty else { return }
+        guard state.hasMoreData else { return }
 
         var buffer = [EncodedChar]()
-        var data = state.data
-
         repeat {
-            let ch = data.first!
-            buffer.append(encoder(ch))
-            data = data.advanced(by: 1)
+            buffer.append(encoder(state.pop()))
 
             // If we encoded data to have 3*n output bytes, stop for now and let the outside decide how to continue
             let bytesToWrite = buffer.reduce(0) { $0 + $1.bytes.count }
             if bytesToWrite % 3 == 0 {
-                let nextEncoder = suggestedEncoder(data: data, currentEncoder: state.encoder)
+                let nextEncoder = suggestedEncoder(state: state)
                 if nextEncoder != state.encoder {
                     break
                 }
             }
-        } while !data.isEmpty
-        
+        } while state.hasMoreData
+
         guard !buffer.isEmpty else { return }
 
         // If buffer contains anything but 3*n characters, we reached end of data.
@@ -64,7 +60,8 @@ class TextModeEncoder {
         var forceSwitchToAscii = false
         if symbolInfo.maxDataCodewords > countAfterEncoding {
             while (buffer.reduce(0) { $0 + $1.bytes.count }) % 3 == 1 {
-                data.insert(buffer.last!.ch, at: data.startIndex)
+                state.undoPop()
+
                 buffer = buffer.dropLast()
                 forceSwitchToAscii = true
             }
@@ -77,27 +74,25 @@ class TextModeEncoder {
             buffer.append(EncodedChar(ch: 0, bytes: [0]))
         }
 
-        let c40Data = buffer.reduce([UInt8]()) { $0 + $1.bytes }
+        let encodedData = buffer.reduce([UInt8]()) { $0 + $1.bytes }
         
-        for i in stride(from: 0, to: c40Data.count, by: 3) {
-            let a = UInt(c40Data[i+0])
-            let b = c40Data.count > i+1 ? UInt(c40Data[i+1]) : 0
-            let c = c40Data.count > i+2 ? UInt(c40Data[i+2]) : 0
+        for i in stride(from: 0, to: encodedData.count, by: 3) {
+            let a = UInt(encodedData[i+0])
+            let b = encodedData.count > i+1 ? UInt(encodedData[i+1]) : 0
+            let c = encodedData.count > i+2 ? UInt(encodedData[i+2]) : 0
             
             let v = (1600 * a) + (40 * b) + c + 1
             let cw1 = UInt8(v / 256)
             let cw2 = UInt8(v % 256)
             
-            state.encoded.append(cw1)
-            if c40Data.count > i+1 {
-                state.encoded.append(cw2)
+            state.append(encoded: cw1)
+            if encodedData.count > i+1 {
+                state.append(encoded: cw2)
             }
         }
 
-        state.data = data
-        
         if forceSwitchToAscii {
-            state.encoded.append(254)
+            state.append(encoded: 254)
             state.encoder = .ascii
         }
     }

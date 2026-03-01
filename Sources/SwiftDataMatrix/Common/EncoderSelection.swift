@@ -14,25 +14,24 @@ import Foundation
 /// suppressed if they can not encode a all values they would encounter in the next
 /// encoding step. In this case, ASCII encoding is more efficient and thus used.
 ///
-/// - Parameter data: The bytes to look at.
-/// - Parameter currenctEncoder: The currently selected encoder.
+/// - Parameter state: The current state of encoding
 /// - Returns The encoder that is assumed to be the best to be used.
-internal func suggestedEncoder(data: Data, currentEncoder: EncoderType) -> EncoderType {
-    let newMode = findBestNextEncoder(data: data, currentEncoder: currentEncoder)
+internal func suggestedEncoder(state: EncodingState) -> EncoderType {
+    let newMode = findBestNextEncoder(state: state)
 
     // X12/EDIFACT need to fall back to ASCII if they encounter a code they cannot encode
     // So it is better to use ASCII in the first place.
-    if .x12 == currentEncoder && .x12 == newMode {
-        let endpos = min(3, data.count)
+    if .x12 == state.encoder && .x12 == newMode {
+        let endpos = min(3, state.pendingDataCount)
         for i in 0..<endpos {
-            if !isNativeX12(data[data.startIndex.advanced(by: i)]) {
+            if !isNativeX12(state.peek(skipping: i)) {
                 return .ascii
             }
         }
-    } else if .edifact == currentEncoder && .edifact == newMode {
-        let endpos = min(4, data.count)
+    } else if .edifact == state.encoder && .edifact == newMode {
+        let endpos = min(4, state.pendingDataCount)
         for i in 0..<endpos {
-            if !isNativeEDIFACT(data[data.startIndex.advanced(by: i)]) {
+            if !isNativeEDIFACT(state.peek(skipping: i)) {
                 return .ascii
             }
         }
@@ -49,14 +48,11 @@ internal func suggestedEncoder(data: Data, currentEncoder: EncoderType) -> Encod
 /// switch (again) for the third/fourth character. In that case ASCII would be better. This has to
 /// be handled by the caller.
 ///
-/// - Parameter data: The bytes to look at.
-/// - Parameter currenctEncoder: The currently selected encoder.
+/// - Parameter state: The current state of encoding
 /// - Returns The encoder that is assumed to be the best to be used.
-fileprivate func findBestNextEncoder(data: Data, currentEncoder: EncoderType) -> EncoderType {
-    if data.isEmpty {
-        return currentEncoder
-    }
-    
+fileprivate func findBestNextEncoder(state: EncodingState) -> EncoderType {
+    guard state.hasMoreData else { return state.encoder }
+
     var costByEncoder: [EncoderType: Double] = [
         .ascii: 1,
         .c40: 2,
@@ -66,16 +62,16 @@ fileprivate func findBestNextEncoder(data: Data, currentEncoder: EncoderType) ->
         .base256: 2.25
     ]
     // Switching from ASCII is cheaper
-    if .ascii == currentEncoder {
+    if .ascii == state.encoder {
         costByEncoder = costByEncoder.mapValues({ $0 - 1 })
     }
     // Reuse current is free
-    costByEncoder[currentEncoder] = 0
+    costByEncoder[state.encoder] = 0
 
 
-    var charsProcessed = 0
+    var pos = 0
     while true {
-        if charsProcessed == data.count {
+        if pos == state.pendingDataCount {
             let evaluation = evaluate(costByEncoder: costByEncoder)
             
             if evaluation.cheapestEncoders.contains(.ascii) {
@@ -98,8 +94,8 @@ fileprivate func findBestNextEncoder(data: Data, currentEncoder: EncoderType) ->
             return .c40
         }
         
-        let ch = data[data.startIndex.advanced(by: charsProcessed)]
-        charsProcessed += 1
+        let ch = state.peek(skipping: pos)
+        pos += 1
 
         // Price for each encoder
         
@@ -147,7 +143,7 @@ fileprivate func findBestNextEncoder(data: Data, currentEncoder: EncoderType) ->
         
         costByEncoder[.base256] = (costByEncoder[.base256] ?? 0) + 1
         
-        if charsProcessed >= 4 {
+        if pos >= 4 {
             let evaluation = evaluate(costByEncoder: costByEncoder)
             
             if evaluation.cost(for: .ascii) < evaluation.minCost(without: [.ascii]) {
@@ -171,13 +167,13 @@ fileprivate func findBestNextEncoder(data: Data, currentEncoder: EncoderType) ->
                     return .c40
                 }
                 if evaluation.cost(for: .c40) == evaluation.cost(for: .x12) {
-                    var p = charsProcessed + 1
-                    while p < data.count {
-                        let tc = data[data.startIndex.advanced(by: p)]
-                        if (isSpecialToX12(tc)) {
+                    var p = pos + 1
+                    while p != state.pendingDataCount {
+                        let ch = state.peek(skipping: p)
+                        if (isSpecialToX12(ch)) {
                             return .x12
                         }
-                        if (!isNativeX12(tc)) {
+                        if (!isNativeX12(ch)) {
                             break
                         }
                         p += 1

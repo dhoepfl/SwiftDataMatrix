@@ -15,24 +15,17 @@ class ASCIIEncoder {
     /// - Parameter state: The state information to use for encoding.
     class func encode(_ state: EncodingState) {
         // Encode groups of 2 digits
-        if state.data.count >= 2 &&
-            state.data.withUnsafeBytes({ ptr in
-                if ptr[0] >= 0x30 && ptr[0] <= 0x39 &&
-                    ptr[1] >= 0x30 && ptr[1] <= 0x39 {
-                    state.encoded.append((ptr[0]-0x30)*10+(ptr[1]-0x30)+130)
-                    return true
-                }
-                
-                return false
-            }) {
-            state.data = state.data.dropFirst(2)
-        } else if isExtendedASCII(state.data.first!) {
-            state.encoded.append(235)
-            state.encoded.append(state.data.first!-128+1)
-            state.data = state.data.dropFirst()
+        if state.pendingDataCount >= 2 &&
+            state.peek() >= 0x30 && state.peek() <= 0x39 &&
+            state.peek(skipping: 1) >= 0x30 && state.peek(skipping: 1) <= 0x39 {
+            let a = state.pop()
+            let b = state.pop()
+            state.append(encoded: (a-0x30)*10+(b-0x30)+130)
+        } else if isExtendedASCII(state.peek()) {
+            state.append(encoded: 235)
+            state.append(encoded: state.pop()-128+1)
         } else {
-            state.encoded.append(state.data.first!+1)
-            state.data = state.data.dropFirst()
+            state.append(encoded: state.pop()+1)
         }
     }
 }

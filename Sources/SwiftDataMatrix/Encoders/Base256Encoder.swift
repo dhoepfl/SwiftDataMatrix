@@ -14,31 +14,30 @@ class Base256Encoder {
     /// - Parameter state: The state information to use for encoding.
     /// - Throws An `SwiftDataMatrixError` if the data cannot be encoded (too much data).
     class func encode(_ state: EncodingState) throws {
-        guard state.data.count > 0 else { return }
+        guard state.hasMoreData else { return }
 
         var dataToEncode = [UInt8]()
         repeat {
-            dataToEncode.append(state.data.first!)
-            state.data = state.data.advanced(by: 1)
-            
-            let nextEncoder = suggestedEncoder(data: state.data, currentEncoder: .base256)
+            dataToEncode.append(state.pop())
+
+            let nextEncoder = suggestedEncoder(state: state)
             if nextEncoder != .base256 {
                 break
             }
-        } while !state.data.isEmpty
+        } while state.hasMoreData
 
         let length = dataToEncode.count
         guard length/250 <= 6 else { throw SwiftDataMatrixError.outOfSpace }
 
         if length <= 254 {
-            state.encoded.append(randomize(UInt8(length), n: state.encoded.count))
+            state.append(encoded: randomize(UInt8(length), n: state.encoded.count))
         } else {
-            state.encoded.append(randomize(UInt8(length/250 + 249), n: state.encoded.count))
-            state.encoded.append(randomize(UInt8(length % 250), n: state.encoded.count))
+            state.append(encoded: randomize(UInt8(length/250 + 249), n: state.encoded.count))
+            state.append(encoded: randomize(UInt8(length % 250), n: state.encoded.count))
         }
         
         for ch in dataToEncode {
-            state.encoded.append(randomize(ch, n: state.encoded.count))
+            state.append(encoded: randomize(ch, n: state.encoded.count))
         }
     }
 

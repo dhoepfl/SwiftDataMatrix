@@ -12,29 +12,24 @@ class X12Encoder {
     ///
     /// - Parameter state: The state information to use for encoding.
     class func encode(_ state: EncodingState) {
-        guard state.data.count >= 3 else {
-            state.encoded.append(254)
+        guard state.pendingDataCount >= 3 else {
+            state.append(encoded: 254)
             state.encoder = .ascii
             return
         }
         
-        if state.data.withUnsafeBytes({ ptr in
-            let a = ptr[0]
-            let b = ptr[1]
-            let c = ptr[2]
+        let a = state.pop()
+        let b = state.pop()
+        let c = state.pop()
+
+        guard isNativeX12(a) && isNativeX12(b) && isNativeX12(c) else { return }
             
-            guard isNativeX12(a) && isNativeX12(b) && isNativeX12(c) else { return false }
-            
-            let v = (1600 * encode(ch: a)) + (40 * encode(ch: b)) + encode(ch: c) + 1
-            let cw1 = UInt8(v / 256)
-            let cw2 = UInt8(v % 256)
-            
-            state.encoded.append(cw1)
-            state.encoded.append(cw2)
-            return true
-        }) {
-            state.data = state.data.dropFirst(3)
-        }
+        let v = (1600 * encode(ch: a)) + (40 * encode(ch: b)) + encode(ch: c) + 1
+        let cw1 = UInt8(v / 256)
+        let cw2 = UInt8(v % 256)
+
+        state.append(encoded: cw1)
+        state.append(encoded: cw2)
     }
 
     /// Maps the code word to the X12 code value.
