@@ -9,7 +9,7 @@ import Foundation
 import XCTest
 @testable import SwiftDataMatrix
 
-class C12EncoderTests: XCTestCase {
+class X12EncoderTests: XCTestCase {
     func testEncodeX12() throws {
         let encoded = try encode(data: "***X12 SHOULD BE USED HERE ABCDEFGHIJKLMNOPQRSTUVW".data(using: .utf8)!)
         

@@ -28,6 +28,31 @@ class SwiftDataMatrixTests: XCTestCase {
         ]), "Expected correctly encoded DataMatrix code image")
     }
 
+    func testDataMatrixCreationUsingDataSlice() throws {
+        let fullContent = "xxxThis DataMatrix code should be 24x24 elementsxxx".data(using: .utf8)!
+        let indexAfterFirstXXX = fullContent.startIndex.advanced(by: 3)
+        let indexOfLastXXX = fullContent.endIndex.advanced(by: -3)
+
+        let testContent = fullContent[indexAfterFirstXXX..<indexOfLastXXX]
+
+        XCTAssertTrue(testContent.startIndex != 0, "The slice should use a start index that is not 0")
+
+        let datamatrix = try dataMatrix(for: testContent)
+
+        printResult(String(data: testContent, encoding: .utf8)!, datamatrix)
+
+        XCTAssertEqual(datamatrix.width, 24, "Expected code width 24 (and square code)")
+        XCTAssertEqual(datamatrix.height, 24, "Expected code height 24 (and square code)")
+        XCTAssertEqual(datamatrix.bytesPerRow, 3, "Expected minimal bytes per row")
+        XCTAssertEqual(datamatrix.bitmap, Data([
+            85,  85,  85,   6, 152, 142,  47,  55,  67,  11, 129,  80, 120, 184,  99,
+            40,  46, 204,  21,   2,  93,  12, 172, 234, 117,  49, 215,  96, 160, 142,
+            105, 229,  41,  21, 203, 196, 106, 126, 171,  17,  65,  42,  46, 245,   1,
+            88, 135,  24, 103, 200, 141,   0, 229,  54,   2,  45,   7,   8, 164, 138,
+            88, 173, 251,  50, 129, 178,  55,  62,  77,   0,   0,   0
+        ]), "Expected correctly encoded DataMatrix code image")
+    }
+
     func testDataGS1MatrixCreation() throws {
         let testContent = "This DataMatrix code should be 24x24 elements"
         let datamatrix = try dataMatrix(for: testContent.data(using: .utf8)!, codeType: .gs1)

@@ -69,4 +69,22 @@ class EDIFACTEncoderTests: XCTestCase {
             92              // W
         ]), "Expected correct data")
     }
-}
+
+    func testEncodeEDIFACTThenASCII() throws {
+        let encoded = try encode(data: "@@@@@@EDIFACT ASCII 000000112233".data(using: .utf8)!)
+
+        XCTAssertEqual(encoded.encodedData, Data([
+            240,            // Switch to EDIFACT
+            0,   0,   0,    // @@@@
+            0,   1,  68,    // @@ED
+            36,  96,  67,   // IFAC
+            82,   0,  83,   // T AS
+            12, 146,  96,   // CII
+            124,            // Return to ASCII
+            130, 130, 130,  // 00 00 00
+            141, 152, 163,  // 11 22 33
+            129,            // End of data
+            59, 209, 104,   // Padding
+            254, 150, 45    // Padding
+        ]), "Expected correct data")
+    }}
